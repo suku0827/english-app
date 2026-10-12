@@ -171,6 +171,16 @@
 </div>
 
 <script>
+const $ = (id) => document.getElementById(id);
+const fOriginal = $('fOriginal');
+const fOrder = $('fOrder');
+const fPattern = $('fPattern');
+const fBreakdown = $('fBreakdown');
+const fAnswer = $('fAnswer');
+const fHint = $('fHint');
+const patternFilter = $('patternFilter');
+const practiceMode = $('practiceMode');
+const practiceCard = $('practiceCard');
 const KEY='englishOrderTrainer_v1';
 let data = JSON.parse(localStorage.getItem(KEY) || 'null');
 if(!data){
@@ -190,7 +200,7 @@ if(!data){
       history:[]
     }]
   };
-  save();
+  localStorage.setItem(KEY,JSON.stringify(data));
 }
 let currentFilter='all';
 let practiceQueue=[];
@@ -212,18 +222,18 @@ document.querySelectorAll('.filter').forEach(b=>b.onclick=()=>{
   document.querySelectorAll('.filter').forEach(x=>x.classList.remove('active'));
   b.classList.add('active'); currentFilter=b.dataset.filter; renderEntries();
 });
-document.getElementById('search').addEventListener('input',renderEntries);
+$('search').addEventListener('input',renderEntries);
 
 function renderStats(){
   const counts = {all:data.entries.length,'◎':0,'○':0,'△':0,'×':0};
   data.entries.forEach(e=>{if(e.rating)counts[e.rating]++});
-  document.getElementById('stats').innerHTML = [
+  $('stats').innerHTML = [
     ['登録数',counts.all],['◎',counts['◎']],['○',counts['○']],['△',counts['△']],['×',counts['×']]
   ].map(([k,v])=>`<div class="stat"><span>${k}</span><b>${v}</b></div>`).join('');
 }
 
 function renderEntries(){
-  const q=document.getElementById('search').value.trim().toLowerCase();
+  const q=$('search').value.trim().toLowerCase();
   let arr=[...data.entries].sort((a,b)=>a.id-b.id);
   arr=arr.filter(e=>{
     if(currentFilter==='fav' && !e.favorite)return false;
@@ -232,7 +242,7 @@ function renderEntries(){
     if(q && !(e.original+' '+e.order+' '+e.pattern+' '+e.answer).toLowerCase().includes(q))return false;
     return true;
   });
-  const list=document.getElementById('entryList');
+  const list=$('entryList');
   if(!arr.length){list.innerHTML='<div class="card empty">該当する問題がありません。</div>';return}
   list.innerHTML=arr.map(e=>{
     const order=splitParts(e.order), br=splitParts(e.breakdown);
@@ -262,7 +272,7 @@ function toggleFav(id){const e=data.entries.find(x=>x.id===id);e.favorite=!e.fav
 function rate(id,r){const e=data.entries.find(x=>x.id===id);e.rating=r;e.history=e.history||[];e.history.push({date:new Date().toISOString().slice(0,10),rating:r});save()}
 function deleteEntry(id){if(confirm(no(id)+' を削除しますか？')){data.entries=data.entries.filter(x=>x.id!==id);save()}}
 
-document.getElementById('saveEntry').onclick=()=>{
+$('saveEntry').onclick=()=>{
   const original=fOriginal.value.trim(), order=fOrder.value.trim(), pattern=fPattern.value.trim(), breakdown=fBreakdown.value.trim(), answer=fAnswer.value.trim(), extraHint=fHint.value.trim();
   if(!original||!order||!pattern||!answer){alert('元の日本語・英語語順・文型・完成英文は入力してください。');return}
   data.entries.push({
@@ -273,14 +283,14 @@ document.getElementById('saveEntry').onclick=()=>{
   alert('保存しました。');
 };
 function clearForm(){[fOriginal,fOrder,fPattern,fBreakdown,fAnswer,fHint].forEach(x=>x.value='')}
-document.getElementById('clearForm').onclick=clearForm;
+$('clearForm').onclick=clearForm;
 
 function populatePatterns(){
   const pats=[...new Set(data.entries.map(e=>e.pattern).filter(Boolean))].sort();
   patternFilter.innerHTML='<option value="all">すべての文型</option>'+pats.map(p=>`<option>${esc(p)}</option>`).join('');
 }
 
-document.getElementById('shuffleStart').onclick=()=>{
+$('shuffleStart').onclick=()=>{
   let arr=[...data.entries];
   const mode=practiceMode.value, pat=patternFilter.value;
   if(mode==='fav') arr=arr.filter(e=>e.favorite);
@@ -328,13 +338,13 @@ function practiceRate(r){rate(currentPractice.id,r)}
 function nextQ(){if(practiceIndex<practiceQueue.length-1){practiceIndex++;showPractice()}else{practiceCard.innerHTML='<div class="empty"><b>今回の練習は終了です。</b><br>お疲れさまでした。</div>'}}
 function prevQ(){if(practiceIndex>0){practiceIndex--;showPractice()}}
 
-document.getElementById('exportJson').onclick=()=>{
+$('exportJson').onclick=()=>{
   const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);
   a.download='english_training_backup_'+new Date().toISOString().slice(0,10)+'.json';a.click();
   URL.revokeObjectURL(a.href);
 };
-document.getElementById('importJson').onchange=async(e)=>{
+$('importJson').onchange=async(e)=>{
   const file=e.target.files[0];if(!file)return;
   try{
     const obj=JSON.parse(await file.text());
