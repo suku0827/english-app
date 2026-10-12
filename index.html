@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>英語語順トレーニング｜SVO・瞬間英作文</title>
+<style>
+  :root{
+    --bg:#f6f7fb; --card:#ffffff; --text:#1f2937; --muted:#6b7280;
+    --line:#e5e7eb; --accent:#2563eb; --accent2:#1d4ed8; --good:#059669;
+    --warn:#d97706; --bad:#dc2626; --purple:#7c3aed;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:var(--bg);color:var(--text)}
+  .app{max-width:1100px;margin:auto;padding:18px}
+  h1{font-size:1.5rem;margin:0 0 8px}
+  .sub{color:var(--muted);margin-bottom:18px}
+  .tabs,.filters,.actions{display:flex;gap:8px;flex-wrap:wrap}
+  button,.btn{
+    border:1px solid var(--line);background:#fff;color:var(--text);padding:10px 14px;
+    border-radius:12px;font-weight:600;cursor:pointer
+  }
+  button:hover{background:#f3f4f6}
+  .primary{background:var(--accent);color:#fff;border-color:var(--accent)}
+  .primary:hover{background:var(--accent2)}
+  .danger{color:#fff;background:var(--bad);border-color:var(--bad)}
+  .tab.active,.filter.active{background:#111827;color:#fff}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px;margin-top:14px;box-shadow:0 2px 8px rgba(0,0,0,.03)}
+  .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+  @media(max-width:720px){.grid{grid-template-columns:1fr}}
+  label{font-size:.9rem;font-weight:700;display:block;margin-bottom:6px}
+  input,textarea,select{
+    width:100%;padding:11px 12px;border:1px solid #d1d5db;border-radius:10px;background:white;font-size:1rem
+  }
+  textarea{min-height:88px;resize:vertical}
+  .hidden{display:none!important}
+  .meta{display:flex;gap:8px;flex-wrap:wrap;color:var(--muted);font-size:.9rem}
+  .pill{padding:4px 8px;border-radius:999px;background:#eef2ff}
+  .entry-title{display:flex;justify-content:space-between;align-items:center;gap:12px}
+  .jp{font-size:1.08rem;line-height:1.7}
+  .order-table{width:100%;border-collapse:collapse;margin-top:8px}
+  .order-table td,.order-table th{border:1px solid var(--line);padding:8px;text-align:center}
+  .answer{font-size:1.15rem;font-weight:700;line-height:1.6}
+  .rating button{min-width:58px}
+  .r-◎{border-color:var(--good)} .r-○{border-color:var(--accent)}
+  .r-△{border-color:var(--warn)} .r-×{border-color:var(--bad)}
+  .rating .selected{color:#fff}
+  .rating .r-◎.selected{background:var(--good)} .rating .r-○.selected{background:var(--accent)}
+  .rating .r-△.selected{background:var(--warn)} .rating .r-×.selected{background:var(--bad)}
+  .favorite{font-size:1.4rem;padding:6px 10px}
+  .fav-on{color:#f59e0b}
+  .stats{display:grid;grid-template-columns:repeat(5,1fr);gap:8px}
+  @media(max-width:720px){.stats{grid-template-columns:repeat(2,1fr)}}
+  .stat{background:#fff;border:1px solid var(--line);border-radius:14px;padding:12px;text-align:center}
+  .stat b{display:block;font-size:1.25rem}
+  .practice-box{text-align:center}
+  .practice-q{font-size:1.35rem;font-weight:700;line-height:1.8;margin:20px 0}
+  .hint{background:#f9fafb;border:1px dashed #cbd5e1;border-radius:12px;padding:12px;margin:10px 0;text-align:left}
+  .small{font-size:.88rem;color:var(--muted)}
+  .toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+  .toolbar > *{flex:0 0 auto}
+  .toolbar input{min-width:220px}
+  .history{font-size:.9rem;color:var(--muted);margin-top:10px}
+  .empty{padding:30px;text-align:center;color:var(--muted)}
+</style>
+
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#2563eb">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="英語語順">
+<link rel="apple-touch-icon" href="icon-192.png">
+
+</head>
+<body>
+<div class="app">
+  <h1>英語語順トレーニング｜SVO・瞬間英作文</h1>
+  <div class="sub">自然な日本語 → 英語語順の日本語 → 文型 → 完成英文</div>
+
+  <div class="tabs">
+    <button class="tab active" data-tab="list">📚 一覧</button>
+    <button class="tab" data-tab="add">➕ 追加</button>
+    <button class="tab" data-tab="practice">🎯 練習</button>
+    <button class="tab" data-tab="backup">💾 バックアップ</button>
+  </div>
+
+  <section id="listTab">
+    <div class="card">
+      <div class="stats" id="stats"></div>
+    </div>
+    <div class="card">
+      <div class="toolbar">
+        <input id="search" placeholder="日本語・英文・文型で検索">
+        <button class="filter active" data-filter="all">すべて</button>
+        <button class="filter" data-filter="◎">◎</button>
+        <button class="filter" data-filter="○">○</button>
+        <button class="filter" data-filter="△">△</button>
+        <button class="filter" data-filter="×">×</button>
+        <button class="filter" data-filter="fav">★</button>
+        <button class="filter" data-filter="weak">△＋×</button>
+      </div>
+    </div>
+    <div id="entryList"></div>
+  </section>
+
+  <section id="addTab" class="hidden">
+    <div class="card">
+      <h2>新しい問題を追加</h2>
+      <div class="grid">
+        <div>
+          <label>元の自然な日本語</label>
+          <textarea id="fOriginal"></textarea>
+        </div>
+        <div>
+          <label>英語の語順に並べた日本語</label>
+          <textarea id="fOrder" placeholder="例：彼女は｜私を迎えに来る予定です｜今日の夕方5時ごろに"></textarea>
+        </div>
+        <div>
+          <label>文型</label>
+          <input id="fPattern" placeholder="例：SVO + M">
+        </div>
+        <div>
+          <label>文型内訳</label>
+          <input id="fBreakdown" placeholder="例：S｜V + O｜M">
+        </div>
+        <div>
+          <label>完成英文</label>
+          <textarea id="fAnswer"></textarea>
+        </div>
+        <div>
+          <label>追加ヒント（任意）</label>
+          <textarea id="fHint" placeholder="例：be going to / pick ～ up"></textarea>
+        </div>
+      </div>
+      <div class="actions" style="margin-top:12px">
+        <button class="primary" id="saveEntry">保存する</button>
+        <button id="clearForm">クリア</button>
+      </div>
+      <div class="small" style="margin-top:10px">番号は自動で No.001 → No.002 → No.003… と増えます。</div>
+    </div>
+  </section>
+
+  <section id="practiceTab" class="hidden">
+    <div class="card">
+      <div class="toolbar">
+        <select id="practiceMode">
+          <option value="all">すべてから出題</option>
+          <option value="weak">△・×を優先</option>
+          <option value="fav">★お気に入り</option>
+          <option value="today10">今日の10問</option>
+        </select>
+        <select id="patternFilter"><option value="all">すべての文型</option></select>
+        <button id="shuffleStart" class="primary">シャッフル開始</button>
+      </div>
+    </div>
+    <div class="card practice-box" id="practiceCard">
+      <div class="small">「シャッフル開始」を押してください。</div>
+    </div>
+  </section>
+
+  <section id="backupTab" class="hidden">
+    <div class="card">
+      <h2>バックアップ・復元</h2>
+      <p>登録データはこの端末のブラウザに自動保存されます。念のためJSONファイルでバックアップできます。</p>
+      <div class="actions">
+        <button id="exportJson" class="primary">JSONを書き出す</button>
+        <label class="btn">JSONを読み込む<input id="importJson" type="file" accept=".json,application/json" hidden></label>
+      </div>
+    </div>
+  </section>
+</div>
+
+<script>
+const KEY='englishOrderTrainer_v1';
+let data = JSON.parse(localStorage.getItem(KEY) || 'null');
+if(!data){
+  data = {
+    nextId:2,
+    entries:[{
+      id:1,
+      original:'彼女は今日の夕方5時ごろ私を迎えに来る予定です。',
+      order:'彼女は｜私を迎えに来る予定です｜今日の夕方5時ごろに',
+      pattern:'SVO + M',
+      breakdown:'S｜V + O｜M',
+      answer:'She is going to pick me up at around 5 p.m. today.',
+      extraHint:'be going to / pick ～ up',
+      rating:'',
+      favorite:false,
+      createdAt:new Date().toISOString().slice(0,10),
+      history:[]
+    }]
+  };
+  save();
+}
+let currentFilter='all';
+let practiceQueue=[];
+let practiceIndex=0;
+let currentPractice=null;
+let hintLevel=0;
+
+function save(){localStorage.setItem(KEY,JSON.stringify(data)); renderAll();}
+function no(n){return 'No.'+String(n).padStart(3,'0');}
+function esc(s=''){return s.replace(/[&<>"']/g,m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;' }[m]));}
+function splitParts(text){return text.split('｜').map(x=>x.trim()).filter(Boolean)}
+
+document.querySelectorAll('.tab').forEach(b=>b.onclick=()=>{
+  document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
+  b.classList.add('active');
+  ['list','add','practice','backup'].forEach(t=>document.getElementById(t+'Tab').classList.toggle('hidden',t!==b.dataset.tab));
+});
+document.querySelectorAll('.filter').forEach(b=>b.onclick=()=>{
+  document.querySelectorAll('.filter').forEach(x=>x.classList.remove('active'));
+  b.classList.add('active'); currentFilter=b.dataset.filter; renderEntries();
+});
+document.getElementById('search').addEventListener('input',renderEntries);
+
+function renderStats(){
+  const counts = {all:data.entries.length,'◎':0,'○':0,'△':0,'×':0};
+  data.entries.forEach(e=>{if(e.rating)counts[e.rating]++});
+  document.getElementById('stats').innerHTML = [
+    ['登録数',counts.all],['◎',counts['◎']],['○',counts['○']],['△',counts['△']],['×',counts['×']]
+  ].map(([k,v])=>`<div class="stat"><span>${k}</span><b>${v}</b></div>`).join('');
+}
+
+function renderEntries(){
+  const q=document.getElementById('search').value.trim().toLowerCase();
+  let arr=[...data.entries].sort((a,b)=>a.id-b.id);
+  arr=arr.filter(e=>{
+    if(currentFilter==='fav' && !e.favorite)return false;
+    if(currentFilter==='weak' && !['△','×'].includes(e.rating))return false;
+    if(['◎','○','△','×'].includes(currentFilter) && e.rating!==currentFilter)return false;
+    if(q && !(e.original+' '+e.order+' '+e.pattern+' '+e.answer).toLowerCase().includes(q))return false;
+    return true;
+  });
+  const list=document.getElementById('entryList');
+  if(!arr.length){list.innerHTML='<div class="card empty">該当する問題がありません。</div>';return}
+  list.innerHTML=arr.map(e=>{
+    const order=splitParts(e.order), br=splitParts(e.breakdown);
+    const cells=order.map((x,i)=>`<td>${esc(x)}</td>`).join('');
+    const bcells=order.map((x,i)=>`<td>${esc(br[i]||'')}</td>`).join('');
+    return `<div class="card">
+      <div class="entry-title">
+        <div><b>${no(e.id)}</b> <span class="pill">${esc(e.pattern)}</span></div>
+        <button class="favorite ${e.favorite?'fav-on':''}" onclick="toggleFav(${e.id})">${e.favorite?'★':'☆'}</button>
+      </div>
+      <p class="jp">${esc(e.original)}</p>
+      <table class="order-table"><tr>${cells}</tr><tr>${bcells}</tr></table>
+      <p><b>文型：</b>${esc(e.pattern)}</p>
+      <p class="answer">${esc(e.answer)}</p>
+      <div class="rating">
+        ${['◎','○','△','×'].map(r=>`<button class="r-${r} ${e.rating===r?'selected':''}" onclick="rate(${e.id},'${r}')">${r}</button>`).join('')}
+      </div>
+      <div class="history">${e.history?.length ? '履歴：'+e.history.slice(-6).map(h=>h.date+' '+h.rating).join(' → ') : '評価履歴はまだありません'}</div>
+      <div class="actions" style="margin-top:10px">
+        <button onclick="deleteEntry(${e.id})">削除</button>
+      </div>
+    </div>`
+  }).join('');
+}
+
+function toggleFav(id){const e=data.entries.find(x=>x.id===id);e.favorite=!e.favorite;save()}
+function rate(id,r){const e=data.entries.find(x=>x.id===id);e.rating=r;e.history=e.history||[];e.history.push({date:new Date().toISOString().slice(0,10),rating:r});save()}
+function deleteEntry(id){if(confirm(no(id)+' を削除しますか？')){data.entries=data.entries.filter(x=>x.id!==id);save()}}
+
+document.getElementById('saveEntry').onclick=()=>{
+  const original=fOriginal.value.trim(), order=fOrder.value.trim(), pattern=fPattern.value.trim(), breakdown=fBreakdown.value.trim(), answer=fAnswer.value.trim(), extraHint=fHint.value.trim();
+  if(!original||!order||!pattern||!answer){alert('元の日本語・英語語順・文型・完成英文は入力してください。');return}
+  data.entries.push({
+    id:data.nextId++, original, order, pattern, breakdown, answer, extraHint,
+    rating:'', favorite:false, createdAt:new Date().toISOString().slice(0,10), history:[]
+  });
+  save(); clearForm();
+  alert('保存しました。');
+};
+function clearForm(){[fOriginal,fOrder,fPattern,fBreakdown,fAnswer,fHint].forEach(x=>x.value='')}
+document.getElementById('clearForm').onclick=clearForm;
+
+function populatePatterns(){
+  const pats=[...new Set(data.entries.map(e=>e.pattern).filter(Boolean))].sort();
+  patternFilter.innerHTML='<option value="all">すべての文型</option>'+pats.map(p=>`<option>${esc(p)}</option>`).join('');
+}
+
+document.getElementById('shuffleStart').onclick=()=>{
+  let arr=[...data.entries];
+  const mode=practiceMode.value, pat=patternFilter.value;
+  if(mode==='fav') arr=arr.filter(e=>e.favorite);
+  if(mode==='weak'){
+    const weak=arr.filter(e=>['△','×'].includes(e.rating));
+    const rest=arr.filter(e=>!['△','×'].includes(e.rating));
+    arr=[...weak,...rest];
+  }
+  if(pat!=='all') arr=arr.filter(e=>e.pattern===pat);
+  arr=shuffle(arr);
+  if(mode==='today10') arr=arr.slice(0,10);
+  if(!arr.length){practiceCard.innerHTML='<div class="empty">条件に合う問題がありません。</div>';return}
+  practiceQueue=arr;practiceIndex=0;showPractice();
+};
+function shuffle(a){for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]]}return a}
+function showPractice(){
+  currentPractice=practiceQueue[practiceIndex];hintLevel=0;
+  renderPractice();
+}
+function renderPractice(){
+  const e=currentPractice;
+  practiceCard.innerHTML=`
+    <div class="meta"><span>${no(e.id)}</span><span>${practiceIndex+1} / ${practiceQueue.length}</span></div>
+    <div class="practice-q">${esc(e.original)}</div>
+    <div id="h1" class="hint ${hintLevel>=1?'':'hidden'}"><b>ヒント1：英語の語順</b><br>${esc(e.order)}</div>
+    <div id="h2" class="hint ${hintLevel>=2?'':'hidden'}"><b>ヒント2：文型</b><br>${esc(e.breakdown || e.pattern)}<br><span class="small">${esc(e.pattern)}</span></div>
+    <div id="h3" class="hint ${hintLevel>=3?'':'hidden'}"><b>追加ヒント</b><br>${esc(e.extraHint || '追加ヒントはありません')}</div>
+    <div id="ans" class="hint ${hintLevel>=4?'':'hidden'}"><b>完成英文</b><br><span class="answer">${esc(e.answer)}</span></div>
+    <div class="actions" style="justify-content:center;margin-top:14px">
+      <button onclick="nextHint()">ヒントを見る</button>
+      <button onclick="showAnswer()">答えを見る</button>
+    </div>
+    <div class="rating" style="margin-top:14px">
+      ${['◎','○','△','×'].map(r=>`<button class="r-${r}" onclick="practiceRate('${r}')">${r}</button>`).join('')}
+    </div>
+    <div class="small" style="margin-top:8px">◎ 自力でできた　○ 少しヒントでできた　△ かなりヒントが必要　× 答えを見た</div>
+    <div class="actions" style="justify-content:center;margin-top:12px">
+      <button onclick="prevQ()">← 前へ</button>
+      <button class="primary" onclick="nextQ()">次へ →</button>
+    </div>`;
+}
+function nextHint(){hintLevel=Math.min(3,hintLevel+1);renderPractice()}
+function showAnswer(){hintLevel=4;renderPractice()}
+function practiceRate(r){rate(currentPractice.id,r)}
+function nextQ(){if(practiceIndex<practiceQueue.length-1){practiceIndex++;showPractice()}else{practiceCard.innerHTML='<div class="empty"><b>今回の練習は終了です。</b><br>お疲れさまでした。</div>'}}
+function prevQ(){if(practiceIndex>0){practiceIndex--;showPractice()}}
+
+document.getElementById('exportJson').onclick=()=>{
+  const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);
+  a.download='english_training_backup_'+new Date().toISOString().slice(0,10)+'.json';a.click();
+  URL.revokeObjectURL(a.href);
+};
+document.getElementById('importJson').onchange=async(e)=>{
+  const file=e.target.files[0];if(!file)return;
+  try{
+    const obj=JSON.parse(await file.text());
+    if(!obj.entries || !Array.isArray(obj.entries)) throw new Error();
+    data=obj; save(); alert('復元しました。');
+  }catch{alert('JSONファイルを読み込めませんでした。')}
+};
+
+function renderAll(){renderStats();renderEntries();populatePatterns()}
+renderAll();
+</script>
+
+<script>
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./service-worker.js').catch(() => {});
+  });
+}
+</script>
+
+</body>
+</html>
