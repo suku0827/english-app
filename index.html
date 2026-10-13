@@ -123,7 +123,7 @@ She is going to pick me up at around 5 p.m. today."></textarea>
           <button class="primary" id="autoFill">自動で振り分ける</button>
           <button id="clearBulk">まとめ貼り付け欄をクリア</button>
         </div>
-        <div class="small" style="margin-top:8px">ChatGPTの回答をそのまま一度に貼り付けると、「元の日本語・英語語順・文型・文型内訳・完成英文」に自動で振り分けます。見出しが別行でも、表形式でも対応します。</div>
+        <div class="small" style="margin-top:8px">見出しを検出して、その見出しの次の行から次の見出し直前までを対応欄へ入れます。複数行対応。見出しがない項目は推測せず空欄のままです。</div>
         <div id="bulkStatus" class="bulk-status hidden"></div>
       </div>
 
@@ -138,11 +138,11 @@ She is going to pick me up at around 5 p.m. today."></textarea>
         </div>
         <div>
           <label>文型</label>
-          <input id="fPattern" placeholder="例：SVO + M">
+          <textarea id="fPattern" placeholder="例：SVO + M"></textarea>
         </div>
         <div>
           <label>文型内訳</label>
-          <input id="fBreakdown" placeholder="例：S｜V + O｜M">
+          <textarea id="fBreakdown" placeholder="例：S｜V + O｜M"></textarea>
         </div>
         <div>
           <label>完成英文</label>
@@ -295,201 +295,115 @@ function rate(id,r){const e=data.entries.find(x=>x.id===id);e.rating=r;e.history
 function deleteEntry(id){if(confirm(no(id)+' を削除しますか？')){data.entries=data.entries.filter(x=>x.id!==id);save()}}
 
 
-function cleanBulkLine(line){
-  return line.trim()
-    .replace(/^```.*$/, '')
-    .replace(/^#{1,6}\s*/, '')
-    .replace(/^[-*•・]\s*/, '')
-    .replace(/^\d+[\.．\)）:\：\-]\s*/, '')
-    .trim();
-}
-
-function normalizeLabel(line){
+function normalizeHeadingLine(line){
   return line
-    .replace(/\*\*/g,'')
-    .replace(/^[【\[]|[】\]]$/g,'')
-    .replace(/[：:]\s*$/,'')
-    .trim();
+    .replace(/^\s*#{1,6}\s*/, '')
+    .replace(/\*\*/g, '')
+    .replace(/^\s*[|｜]\s*/, '')
+    .replace(/\s*[|｜]\s*$/, '')
+    .replace(/^\s+|\s+$/g, '');
 }
 
-function labelType(line){
-  const s = normalizeLabel(line).toLowerCase();
-  const labels = [
-    ['元の自然な日本語','元の日本語','自然な日本語','日本語'],
-    ['英語の語順に並べた日本語','英語語順に並べた日本語','英語語順の日本語','英語の語順の日本語','語順の日本語','英語語順'],
-    ['文型','英文の文型','sentence pattern'],
-    ['完成した自然な英文','完成英文','英文','英語','answer']
-  ];
-  for(let i=0;i<labels.length;i++){
-    if(labels[i].some(x=>s===x.toLowerCase())) return i;
+function detectBulkHeading(line){
+  const s = normalizeHeadingLine(line);
+  const map = {
+    '元の自然な日本語':'original',
+    '元の日本語':'original',
+    '英語の語順に並べた日本語':'order',
+    '英語語順':'order',
+    '文型':'pattern',
+    '文型内訳':'breakdown',
+    '完成した自然な英文':'answer',
+    '完成英文':'answer'
+  };
+  return Object.prototype.hasOwnProperty.call(map, s) ? map[s] : null;
+}
+
+function cleanBulkContentLine(line){
+  let s = line.replace(/\*\*/g, '').trim();
+  if(!s) return '';
+
+  // Markdownの表区切り行（| --- | --- | など）は捨てる
+  const tableCheck = s.replace(/[|｜:\-\s]/g, '');
+  if(tableCheck === '') return '';
+
+  // 単独の###など装飾だけの行は捨てる
+  if(/^#{1,6}$/.test(s)) return '';
+
+  // Markdown見出し記号が内容行の先頭に混じっていたら除去
+  s = s.replace(/^#{1,6}\s*/, '').trim();
+
+  // Markdown表の外側パイプを除去し、セル区切りは見やすい「｜」に統一
+  if(/[|｜]/.test(s)){
+    const cells = s
+      .replace(/^\s*[|｜]\s*/, '')
+      .replace(/\s*[|｜]\s*$/, '')
+      .split(/[|｜]/)
+      .map(x=>x.trim())
+      .filter(Boolean);
+    s = cells.join('｜');
   }
-  return -1;
-}
 
-function stripInlineLabel(line){
-  const pats = [
-    /^(?:元の自然な日本語|元の日本語|自然な日本語|日本語)\s*[:：]\s*/i,
-    /^(?:英語の語順に並べた日本語|英語語順に並べた日本語|英語語順の日本語|英語の語順の日本語|語順の日本語|英語語順)\s*[:：]\s*/i,
-    /^(?:文型|英文の文型|sentence pattern)\s*[:：]\s*/i,
-    /^(?:完成した自然な英文|完成英文|英文|英語|answer)\s*[:：]\s*/i
-  ];
-  for(let i=0;i<pats.length;i++){
-    if(pats[i].test(line)) return {type:i, text:line.replace(pats[i],'').trim()};
-  }
-  return {type:-1,text:line.trim()};
-}
-
-function parseMarkdownRow(line){
-  if(!line.includes('|')) return null;
-  const cells=line.split('|').map(x=>x.trim()).filter(x=>x!=='');
-  if(!cells.length) return null;
-  if(cells.every(x=>/^:?-{3,}:?$/.test(x))) return {separator:true,cells:[]};
-  return {separator:false,cells};
-}
-
-function derivePattern(breakdown){
-  if(!breakdown) return '';
-  const parts=breakdown.split('｜').map(x=>x.trim()).filter(Boolean);
-  const letters=[];
-  parts.forEach(p=>{
-    const ms=p.toUpperCase().match(/[SVOCM]/g);
-    if(ms) letters.push(...ms);
-  });
-  if(!letters.length) return breakdown;
-  let core='', mods=0;
-  letters.forEach(x=>{
-    if(x==='M') mods++;
-    else if(!core.includes(x) || x==='O') core+=x;
-  });
-  return core + (mods ? ' + ' + Array(mods).fill('M').join(' + ') : '');
+  return s.trim();
 }
 
 function parseBulkText(raw){
-  const originalLines = raw.replace(/\r\n?/g,'\n').split('\n');
-  const lines = originalLines.map(cleanBulkLine).filter(Boolean);
+  const result = {original:'', order:'', pattern:'', breakdown:'', answer:''};
+  const buffers = {original:[], order:[], pattern:[], breakdown:[], answer:[]};
+  let current = null;
 
-  const result={original:'',order:'',pattern:'',breakdown:'',answer:''};
-  let section=-1;
-  let orderParts=[];
-  let breakdownParts=[];
-  let answerParts=[];
-  let originalParts=[];
+  const lines = raw.replace(/\r\n?/g, '\n').split('\n');
 
-  for(let i=0;i<lines.length;i++){
-    let line=lines[i];
-    if(!line || /^```/.test(line)) continue;
-
-    // 「ラベル: 内容」
-    const inline=stripInlineLabel(line);
-    if(inline.type>=0){
-      section=inline.type;
-      if(inline.text){
-        if(section===0) originalParts.push(inline.text);
-        else if(section===1) orderParts.push(inline.text);
-        else if(section===2) {
-          // "文型: SVO + M" のような1行
-          result.pattern=inline.text;
-        }
-        else if(section===3) answerParts.push(inline.text);
-      }
+  for(const rawLine of lines){
+    const heading = detectBulkHeading(rawLine);
+    if(heading){
+      current = heading;
       continue;
     }
 
-    // ラベルだけの行
-    const lt=labelType(line);
-    if(lt>=0){
-      section=lt;
-      continue;
-    }
+    // 見出しが見つかるまでは何も推測しない
+    if(!current) continue;
 
-    // Markdown表
-    const row=parseMarkdownRow(line);
-    if(row){
-      if(row.separator) continue;
-      const cells=row.cells;
-
-      // 文型 | S | V + O | M
-      if(cells.length>=2 && /^文型$/i.test(cells[0].replace(/\*\*/g,''))){
-        breakdownParts=cells.slice(1);
-        if(!result.pattern) result.pattern=derivePattern(breakdownParts.join('｜'));
-        continue;
-      }
-
-      if(section===1){
-        // 先頭セルに「文型」がない表行は語順行とみなす
-        if(!orderParts.length) orderParts=cells;
-        continue;
-      }
-    }
-
-    if(section===0) originalParts.push(line);
-    else if(section===1) {
-      // 区切り文字に対応
-      if(/[｜|]/.test(line)){
-        orderParts.push(...line.split(/[｜|]/).map(x=>x.trim()).filter(Boolean));
-      }else if(/[・]/.test(line)){
-        orderParts.push(...line.split('・').map(x=>x.trim()).filter(Boolean));
-      }else{
-        orderParts.push(line);
-      }
-    }
-    else if(section===2){
-      // 文型セクション内で "S｜V｜O｜M" なら内訳、
-      // "SVO + M" なら文型名
-      if(/[｜|]/.test(line)){
-        breakdownParts.push(...line.split(/[｜|]/).map(x=>x.trim()).filter(Boolean));
-      }else if(/^(?:S|V|O|C|M)(?:\s*(?:\+|\/|,|\s)\s*(?:S|V|O|C|M|\+\s*O))*$/i.test(line) || /^[SVOCM]{2,}(?:\s*\+\s*M)*$/i.test(line)){
-        if(!result.pattern) result.pattern=line;
-      }else{
-        // "S   V + O   M" のような空白区切り
-        const toks=line.split(/\t+|\s{2,}/).map(x=>x.trim()).filter(Boolean);
-        if(toks.length>1) breakdownParts.push(...toks);
-        else if(!result.pattern) result.pattern=line;
-      }
-    }
-    else if(section===3) answerParts.push(line);
+    const cleaned = cleanBulkContentLine(rawLine);
+    if(!cleaned) continue;
+    buffers[current].push(cleaned);
   }
 
-  result.original=originalParts.join(' ').trim();
-  result.order=orderParts.join('｜').trim();
-  result.breakdown=breakdownParts.join('｜').trim();
-  result.answer=answerParts.join(' ').trim();
-
-  if(!result.pattern && result.breakdown) result.pattern=derivePattern(result.breakdown);
-
-  // ラベルを認識できなかった場合は従来の4段形式も受け付ける
-  if(!result.original && !result.order && !result.pattern && !result.answer){
-    const plain=lines.filter(x=>labelType(x)<0);
-    if(plain.length>=4){
-      result.original=plain[0];
-      result.order=plain[1].replace(/\s*\|\s*/g,'｜');
-      result.pattern=plain[2];
-      result.answer=plain.slice(3).join(' ');
-    }
-  }
-
+  // 複数行はそのまま保持。表だけ「｜」区切りに整形される。
+  result.original = buffers.original.join('\n').trim();
+  result.order = buffers.order.join('\n').trim();
+  result.pattern = buffers.pattern.join('\n').trim();
+  result.breakdown = buffers.breakdown.join('\n').trim();
+  result.answer = buffers.answer.join('\n').trim();
   return result;
 }
 
 function autoFillFromBulk(showAlert=true){
-  const raw=fBulk.value.trim();
-  if(!raw){
+  const raw=fBulk.value;
+  if(!raw.trim()){
     if(showAlert) alert('まとめて貼り付ける文章を入力してください。');
     return false;
   }
+
   const r=parseBulkText(raw);
-  if(!r || !r.original || !r.order || !r.pattern || !r.answer){
-    if(showAlert) alert('内容を正しく認識できませんでした。\nChatGPTの「元の自然な日本語 → 英語の語順に並べた日本語 → 文型 → 完成英文」をそのまま貼り付けてください。');
-    return false;
-  }
+
+  // 必ず全欄を一度クリアしてから、見出しが見つかった項目だけ入れる
   fOriginal.value=r.original;
   fOrder.value=r.order;
   fPattern.value=r.pattern;
-  fBreakdown.value=r.breakdown || '';
+  fBreakdown.value=r.breakdown;
   fAnswer.value=r.answer;
 
+  const found = [r.original,r.order,r.pattern,r.breakdown,r.answer].filter(Boolean).length;
   const st=$('bulkStatus');
-  st.textContent='✓ 自動で振り分けました。元の日本語・語順・文型・文型内訳・完成英文を確認してください。';
+  if(found===0){
+    st.textContent='見出しを認識できませんでした。指定された見出し名を確認してください。';
+    st.classList.remove('hidden');
+    if(showAlert) alert('指定された見出しを1つも認識できませんでした。\n行の順番からは推測しません。');
+    return false;
+  }
+
+  st.textContent=`✓ 見出しを基準に ${found} 項目を振り分けました。見出しが無い項目は空欄です。`;
   st.classList.remove('hidden');
   return true;
 }
