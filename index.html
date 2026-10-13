@@ -62,6 +62,9 @@
   .toolbar input{min-width:220px}
   .history{font-size:.9rem;color:var(--muted);margin-top:10px}
   .empty{padding:30px;text-align:center;color:var(--muted)}
+  .bulk-box{background:#eff6ff;border:1px solid #bfdbfe;border-radius:14px;padding:14px;margin:12px 0 16px}
+  .bulk-box textarea{min-height:150px;background:#fff}
+  .bulk-status{margin-top:8px;font-size:.9rem;font-weight:700;color:var(--good)}
 </style>
 
 <link rel="manifest" href="manifest.webmanifest">
@@ -106,6 +109,24 @@
   <section id="addTab" class="hidden">
     <div class="card">
       <h2>新しい問題を追加</h2>
+
+      <div class="bulk-box">
+        <label>📋 まとめて貼り付け（おすすめ）</label>
+        <textarea id="fBulk" placeholder="ここに4段をまとめて貼り付けてください。
+
+例：
+彼女は今日の夕方5時ごろ私を迎えに来る予定です。
+彼女は私を迎えに来る予定です｜今日の夕方5時ごろに
+SVO + M
+She is going to pick me up at around 5 p.m. today."></textarea>
+        <div class="actions" style="margin-top:10px">
+          <button class="primary" id="autoFill">自動で振り分ける</button>
+          <button id="clearBulk">まとめ貼り付け欄をクリア</button>
+        </div>
+        <div class="small" style="margin-top:8px">4段を一度に貼り付けると、下の「元の日本語・英語語順・文型・完成英文」に自動で入ります。ラベル付きの文章にも対応します。</div>
+        <div id="bulkStatus" class="bulk-status hidden"></div>
+      </div>
+
       <div class="grid">
         <div>
           <label>元の自然な日本語</label>
@@ -172,6 +193,7 @@
 
 <script>
 const $ = (id) => document.getElementById(id);
+const fBulk = $('fBulk');
 const fOriginal = $('fOriginal');
 const fOrder = $('fOrder');
 const fPattern = $('fPattern');
@@ -272,6 +294,87 @@ function toggleFav(id){const e=data.entries.find(x=>x.id===id);e.favorite=!e.fav
 function rate(id,r){const e=data.entries.find(x=>x.id===id);e.rating=r;e.history=e.history||[];e.history.push({date:new Date().toISOString().slice(0,10),rating:r});save()}
 function deleteEntry(id){if(confirm(no(id)+' を削除しますか？')){data.entries=data.entries.filter(x=>x.id!==id);save()}}
 
+
+function cleanBulkLine(line){
+  return line.trim()
+    .replace(/^[-*•・\s]+/, '')
+    .replace(/^\d+[\.．\)）:\：\-]\s*/, '')
+    .trim();
+}
+
+function stripLabel(line){
+  const patterns = [
+    /^(?:元の自然な日本語|元の日本語|自然な日本語|日本語)[\s　]*[:：][\s　]*/i,
+    /^(?:英語の語順に並べた日本語|英語語順の日本語|英語の語順の日本語|語順の日本語|英語語順)[\s　]*[:：][\s　]*/i,
+    /^(?:文型|英文の文型|sentence pattern)[\s　]*[:：][\s　]*/i,
+    /^(?:完成英文|英文|英語|answer)[\s　]*[:：][\s　]*/i
+  ];
+  for(let i=0;i<patterns.length;i++){
+    if(patterns[i].test(line)) return {type:i, text:line.replace(patterns[i],'').trim()};
+  }
+  return {type:-1, text:line.trim()};
+}
+
+function parseBulkText(raw){
+  let lines = raw.replace(/\r/g,'\n').split('\n')
+    .map(cleanBulkLine)
+    .filter(Boolean)
+    .filter(x=>!/^```/.test(x));
+
+  const labeled = {0:'',1:'',2:'',3:''};
+  let foundLabel=false;
+  const unlabeled=[];
+  for(const line of lines){
+    const r=stripLabel(line);
+    if(r.type>=0){ labeled[r.type]=r.text; foundLabel=true; }
+    else unlabeled.push(line);
+  }
+
+  if(foundLabel){
+    return {
+      original:labeled[0], order:labeled[1], pattern:labeled[2], answer:labeled[3]
+    };
+  }
+
+  // 4段形式を基本として扱う。余分な空行は上で除去済み。
+  if(lines.length >= 4){
+    return {
+      original:lines[0],
+      order:lines[1],
+      pattern:lines[2],
+      answer:lines.slice(3).join(' ')
+    };
+  }
+  return null;
+}
+
+function autoFillFromBulk(showAlert=true){
+  const raw=fBulk.value.trim();
+  if(!raw){
+    if(showAlert) alert('まとめて貼り付ける文章を入力してください。');
+    return false;
+  }
+  const r=parseBulkText(raw);
+  if(!r || !r.original || !r.order || !r.pattern || !r.answer){
+    if(showAlert) alert('4段を認識できませんでした。\n「元の日本語 → 英語語順の日本語 → 文型 → 完成英文」の順で貼り付けてください。');
+    return false;
+  }
+  fOriginal.value=r.original;
+  fOrder.value=r.order;
+  fPattern.value=r.pattern;
+  fAnswer.value=r.answer;
+  const st=$('bulkStatus');
+  st.textContent='✓ 4項目へ自動で振り分けました。内容を確認して「保存する」を押してください。';
+  st.classList.remove('hidden');
+  return true;
+}
+
+$('autoFill').onclick=()=>autoFillFromBulk(true);
+$('clearBulk').onclick=()=>{fBulk.value='';$('bulkStatus').classList.add('hidden')};
+fBulk.addEventListener('paste',()=>{
+  setTimeout(()=>autoFillFromBulk(false),0);
+});
+
 $('saveEntry').onclick=()=>{
   const original=fOriginal.value.trim(), order=fOrder.value.trim(), pattern=fPattern.value.trim(), breakdown=fBreakdown.value.trim(), answer=fAnswer.value.trim(), extraHint=fHint.value.trim();
   if(!original||!order||!pattern||!answer){alert('元の日本語・英語語順・文型・完成英文は入力してください。');return}
@@ -282,7 +385,7 @@ $('saveEntry').onclick=()=>{
   save(); clearForm();
   alert('保存しました。');
 };
-function clearForm(){[fOriginal,fOrder,fPattern,fBreakdown,fAnswer,fHint].forEach(x=>x.value='')}
+function clearForm(){[fBulk,fOriginal,fOrder,fPattern,fBreakdown,fAnswer,fHint].forEach(x=>x.value='');$('bulkStatus').classList.add('hidden')}
 $('clearForm').onclick=clearForm;
 
 function populatePatterns(){
