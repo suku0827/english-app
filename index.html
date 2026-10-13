@@ -123,7 +123,7 @@ She is going to pick me up at around 5 p.m. today."></textarea>
           <button class="primary" id="autoFill">自動で振り分ける</button>
           <button id="clearBulk">まとめ貼り付け欄をクリア</button>
         </div>
-        <div class="small" style="margin-top:8px">4段を一度に貼り付けると、下の「元の日本語・英語語順・文型・完成英文」に自動で入ります。ラベル付きの文章にも対応します。</div>
+        <div class="small" style="margin-top:8px">ChatGPTの回答をそのまま一度に貼り付けると、「元の日本語・英語語順・文型・文型内訳・完成英文」に自動で振り分けます。見出しが別行でも、表形式でも対応します。</div>
         <div id="bulkStatus" class="bulk-status hidden"></div>
       </div>
 
@@ -297,55 +297,178 @@ function deleteEntry(id){if(confirm(no(id)+' を削除しますか？')){data.en
 
 function cleanBulkLine(line){
   return line.trim()
-    .replace(/^[-*•・\s]+/, '')
+    .replace(/^```.*$/, '')
+    .replace(/^#{1,6}\s*/, '')
+    .replace(/^[-*•・]\s*/, '')
     .replace(/^\d+[\.．\)）:\：\-]\s*/, '')
     .trim();
 }
 
-function stripLabel(line){
-  const patterns = [
-    /^(?:元の自然な日本語|元の日本語|自然な日本語|日本語)[\s　]*[:：][\s　]*/i,
-    /^(?:英語の語順に並べた日本語|英語語順の日本語|英語の語順の日本語|語順の日本語|英語語順)[\s　]*[:：][\s　]*/i,
-    /^(?:文型|英文の文型|sentence pattern)[\s　]*[:：][\s　]*/i,
-    /^(?:完成英文|英文|英語|answer)[\s　]*[:：][\s　]*/i
+function normalizeLabel(line){
+  return line
+    .replace(/\*\*/g,'')
+    .replace(/^[【\[]|[】\]]$/g,'')
+    .replace(/[：:]\s*$/,'')
+    .trim();
+}
+
+function labelType(line){
+  const s = normalizeLabel(line).toLowerCase();
+  const labels = [
+    ['元の自然な日本語','元の日本語','自然な日本語','日本語'],
+    ['英語の語順に並べた日本語','英語語順に並べた日本語','英語語順の日本語','英語の語順の日本語','語順の日本語','英語語順'],
+    ['文型','英文の文型','sentence pattern'],
+    ['完成した自然な英文','完成英文','英文','英語','answer']
   ];
-  for(let i=0;i<patterns.length;i++){
-    if(patterns[i].test(line)) return {type:i, text:line.replace(patterns[i],'').trim()};
+  for(let i=0;i<labels.length;i++){
+    if(labels[i].some(x=>s===x.toLowerCase())) return i;
   }
-  return {type:-1, text:line.trim()};
+  return -1;
+}
+
+function stripInlineLabel(line){
+  const pats = [
+    /^(?:元の自然な日本語|元の日本語|自然な日本語|日本語)\s*[:：]\s*/i,
+    /^(?:英語の語順に並べた日本語|英語語順に並べた日本語|英語語順の日本語|英語の語順の日本語|語順の日本語|英語語順)\s*[:：]\s*/i,
+    /^(?:文型|英文の文型|sentence pattern)\s*[:：]\s*/i,
+    /^(?:完成した自然な英文|完成英文|英文|英語|answer)\s*[:：]\s*/i
+  ];
+  for(let i=0;i<pats.length;i++){
+    if(pats[i].test(line)) return {type:i, text:line.replace(pats[i],'').trim()};
+  }
+  return {type:-1,text:line.trim()};
+}
+
+function parseMarkdownRow(line){
+  if(!line.includes('|')) return null;
+  const cells=line.split('|').map(x=>x.trim()).filter(x=>x!=='');
+  if(!cells.length) return null;
+  if(cells.every(x=>/^:?-{3,}:?$/.test(x))) return {separator:true,cells:[]};
+  return {separator:false,cells};
+}
+
+function derivePattern(breakdown){
+  if(!breakdown) return '';
+  const parts=breakdown.split('｜').map(x=>x.trim()).filter(Boolean);
+  const letters=[];
+  parts.forEach(p=>{
+    const ms=p.toUpperCase().match(/[SVOCM]/g);
+    if(ms) letters.push(...ms);
+  });
+  if(!letters.length) return breakdown;
+  let core='', mods=0;
+  letters.forEach(x=>{
+    if(x==='M') mods++;
+    else if(!core.includes(x) || x==='O') core+=x;
+  });
+  return core + (mods ? ' + ' + Array(mods).fill('M').join(' + ') : '');
 }
 
 function parseBulkText(raw){
-  let lines = raw.replace(/\r/g,'\n').split('\n')
-    .map(cleanBulkLine)
-    .filter(Boolean)
-    .filter(x=>!/^```/.test(x));
+  const originalLines = raw.replace(/\r\n?/g,'\n').split('\n');
+  const lines = originalLines.map(cleanBulkLine).filter(Boolean);
 
-  const labeled = {0:'',1:'',2:'',3:''};
-  let foundLabel=false;
-  const unlabeled=[];
-  for(const line of lines){
-    const r=stripLabel(line);
-    if(r.type>=0){ labeled[r.type]=r.text; foundLabel=true; }
-    else unlabeled.push(line);
+  const result={original:'',order:'',pattern:'',breakdown:'',answer:''};
+  let section=-1;
+  let orderParts=[];
+  let breakdownParts=[];
+  let answerParts=[];
+  let originalParts=[];
+
+  for(let i=0;i<lines.length;i++){
+    let line=lines[i];
+    if(!line || /^```/.test(line)) continue;
+
+    // 「ラベル: 内容」
+    const inline=stripInlineLabel(line);
+    if(inline.type>=0){
+      section=inline.type;
+      if(inline.text){
+        if(section===0) originalParts.push(inline.text);
+        else if(section===1) orderParts.push(inline.text);
+        else if(section===2) {
+          // "文型: SVO + M" のような1行
+          result.pattern=inline.text;
+        }
+        else if(section===3) answerParts.push(inline.text);
+      }
+      continue;
+    }
+
+    // ラベルだけの行
+    const lt=labelType(line);
+    if(lt>=0){
+      section=lt;
+      continue;
+    }
+
+    // Markdown表
+    const row=parseMarkdownRow(line);
+    if(row){
+      if(row.separator) continue;
+      const cells=row.cells;
+
+      // 文型 | S | V + O | M
+      if(cells.length>=2 && /^文型$/i.test(cells[0].replace(/\*\*/g,''))){
+        breakdownParts=cells.slice(1);
+        if(!result.pattern) result.pattern=derivePattern(breakdownParts.join('｜'));
+        continue;
+      }
+
+      if(section===1){
+        // 先頭セルに「文型」がない表行は語順行とみなす
+        if(!orderParts.length) orderParts=cells;
+        continue;
+      }
+    }
+
+    if(section===0) originalParts.push(line);
+    else if(section===1) {
+      // 区切り文字に対応
+      if(/[｜|]/.test(line)){
+        orderParts.push(...line.split(/[｜|]/).map(x=>x.trim()).filter(Boolean));
+      }else if(/[・]/.test(line)){
+        orderParts.push(...line.split('・').map(x=>x.trim()).filter(Boolean));
+      }else{
+        orderParts.push(line);
+      }
+    }
+    else if(section===2){
+      // 文型セクション内で "S｜V｜O｜M" なら内訳、
+      // "SVO + M" なら文型名
+      if(/[｜|]/.test(line)){
+        breakdownParts.push(...line.split(/[｜|]/).map(x=>x.trim()).filter(Boolean));
+      }else if(/^(?:S|V|O|C|M)(?:\s*(?:\+|\/|,|\s)\s*(?:S|V|O|C|M|\+\s*O))*$/i.test(line) || /^[SVOCM]{2,}(?:\s*\+\s*M)*$/i.test(line)){
+        if(!result.pattern) result.pattern=line;
+      }else{
+        // "S   V + O   M" のような空白区切り
+        const toks=line.split(/\t+|\s{2,}/).map(x=>x.trim()).filter(Boolean);
+        if(toks.length>1) breakdownParts.push(...toks);
+        else if(!result.pattern) result.pattern=line;
+      }
+    }
+    else if(section===3) answerParts.push(line);
   }
 
-  if(foundLabel){
-    return {
-      original:labeled[0], order:labeled[1], pattern:labeled[2], answer:labeled[3]
-    };
+  result.original=originalParts.join(' ').trim();
+  result.order=orderParts.join('｜').trim();
+  result.breakdown=breakdownParts.join('｜').trim();
+  result.answer=answerParts.join(' ').trim();
+
+  if(!result.pattern && result.breakdown) result.pattern=derivePattern(result.breakdown);
+
+  // ラベルを認識できなかった場合は従来の4段形式も受け付ける
+  if(!result.original && !result.order && !result.pattern && !result.answer){
+    const plain=lines.filter(x=>labelType(x)<0);
+    if(plain.length>=4){
+      result.original=plain[0];
+      result.order=plain[1].replace(/\s*\|\s*/g,'｜');
+      result.pattern=plain[2];
+      result.answer=plain.slice(3).join(' ');
+    }
   }
 
-  // 4段形式を基本として扱う。余分な空行は上で除去済み。
-  if(lines.length >= 4){
-    return {
-      original:lines[0],
-      order:lines[1],
-      pattern:lines[2],
-      answer:lines.slice(3).join(' ')
-    };
-  }
-  return null;
+  return result;
 }
 
 function autoFillFromBulk(showAlert=true){
@@ -356,15 +479,17 @@ function autoFillFromBulk(showAlert=true){
   }
   const r=parseBulkText(raw);
   if(!r || !r.original || !r.order || !r.pattern || !r.answer){
-    if(showAlert) alert('4段を認識できませんでした。\n「元の日本語 → 英語語順の日本語 → 文型 → 完成英文」の順で貼り付けてください。');
+    if(showAlert) alert('内容を正しく認識できませんでした。\nChatGPTの「元の自然な日本語 → 英語の語順に並べた日本語 → 文型 → 完成英文」をそのまま貼り付けてください。');
     return false;
   }
   fOriginal.value=r.original;
   fOrder.value=r.order;
   fPattern.value=r.pattern;
+  fBreakdown.value=r.breakdown || '';
   fAnswer.value=r.answer;
+
   const st=$('bulkStatus');
-  st.textContent='✓ 4項目へ自動で振り分けました。内容を確認して「保存する」を押してください。';
+  st.textContent='✓ 自動で振り分けました。元の日本語・語順・文型・文型内訳・完成英文を確認してください。';
   st.classList.remove('hidden');
   return true;
 }
